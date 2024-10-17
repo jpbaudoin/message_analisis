@@ -1,6 +1,9 @@
+import chardet
 import emoji
+import pandas as pd
 # detect the laguage of the text in the field mesaage_text
 from langdetect import LangDetectException, detect, detect_langs
+from unidecode import unidecode
 
 
 def print_top(df, field, title, top=10):
@@ -67,3 +70,135 @@ def detect_multiple_languages(text):
         print(e, text)
         return "Error langdetect"
 
+
+def translate_chars(text, encoding, ext_chars_map=None, unidecode_on_miss=False):
+    changed = False
+    new_text_chars = []
+    enc = chardet.detect(text.encode())['encoding']
+    
+    encoding_map = {
+        "Windows-1254": "cp1254",
+        "ISO-8859-9": "cp1254",
+        "Windows-1252": "cp1252",
+        "ISO-8859-1": "cp1252",
+    }
+    encoding = encoding_map.get(encoding, encoding)
+
+    miss_text = text
+    if unidecode_on_miss:
+        miss_text = unidecode(text)
+        # encode the text to utf-8
+        miss_text = miss_text.encode().decode('utf-8')
+        
+
+    # Probably remove this and use the original encoding
+    if encoding not in ext_chars_map:
+        return miss_text
+    
+    char_map = ext_chars_map[encoding]
+
+    
+    if text in char_map:
+        changed = True
+        operation = char_map[text]['operation']
+
+        if  operation == 'convert':
+            new_text = char_map[text]['dst']
+        elif operation == 'unicode':
+            new_text = unidecode(text)
+        else:
+            # convert to utf-8 code
+            utf_code = char_map[text]['dst']
+            # char_code = "\xe2\x82\xac"
+            # print(utf_code, type(utf_code))
+            # print(char_code, type(char_code))
+
+            # utf_code2 =to_raw_string(utf_code)
+            # print(utf_code2)
+            # char_bytes = bytes(utf_code2, 'latin1')
+            char_bytes = utf_code.encode('latin1')
+
+            print(char_bytes)
+            new_text = char_bytes.decode('utf-8')
+    else:
+        return miss_text
+
+    if changed:
+        print("--------------------")
+        print(new_text)
+        print(text)
+        print("--------------------")
+    return new_text
+
+def simple_utf_encode(text, encoding):
+    try:
+        text_encoded = text.encode(encoding)
+    except UnicodeError as e:
+        return None
+
+    try:
+        text_decoded = text_encoded.decode('utf-8')
+    except UnicodeError as e:
+        return None
+
+    return text_decoded
+
+def encode_utf8(text, encoding, gen_missed_chars=False, ext_chars_map=None):
+
+    if pd.isna(text):
+        return text
+
+    
+    try:
+        text_encoded = text.encode(encoding)
+    except UnicodeError as e:
+        # split the text in two parts
+        text1 = text[:e.start]
+        text2 = text[e.end:]
+        # encode the two parts
+        text1_utf = encode_utf8(text1, encoding, gen_missed_chars, ext_chars_map)
+        text2_utf = encode_utf8(text2, encoding, gen_missed_chars, ext_chars_map)
+        # process missed characters
+        missed_chars = text[e.start:e.end]
+        missed_chars_utf = translate_chars(missed_chars, encoding, ext_chars_map, unidecode_on_miss=True)
+
+        # appenf text to file
+        if gen_missed_chars:
+            with open("1_error_messages_encode.txt", "a") as f:
+                f.write(f"{text[e.start:e.end]},{encoding}\n")
+
+        return f"{text1_utf}{missed_chars_utf}{text2_utf}"
+
+        # print(f"Error: {e}")
+        # print(f"Error Start: {e.start}")
+        # print(f"Error End: {e.end}")
+        # print(f"Message: {text}")
+        # print(f"Error: {text[e.start:e.end]}" )
+        # print(f"BaseEncoding: {row['message_encoding']}")
+        # print(f"Encoding: {encoding}")
+        
+
+        # print(f"Encoded2: {row['message_text_clean_utf8']}")
+        # print("--------")
+
+    try:
+        text_decoded = text_encoded.decode('utf-8')
+    except UnicodeError as e:
+
+        text1 = text[:e.start]
+        text2 = text[e.end:]
+        # encode the two parts
+        text1_utf = encode_utf8(text1, encoding, gen_missed_chars, ext_chars_map)
+        text2_utf = encode_utf8(text2, encoding, gen_missed_chars, ext_chars_map)
+        # process missed characters
+        missed_chars = text[e.start:e.end]
+        missed_chars_utf = translate_chars(missed_chars, encoding, ext_chars_map, unidecode_on_miss=True)
+
+        # appenf text to file
+        if gen_missed_chars:
+            with open("2_error_messages_decode", "a") as f:
+                f.write(f"{text[e.start:e.end]},{encoding}\n")
+
+        return f"{text1_utf}{missed_chars_utf}{text2_utf}"
+
+    return text_decoded
